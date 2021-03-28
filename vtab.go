@@ -11,27 +11,34 @@ import (
 	"go.riyazali.net/sqlite"
 )
 
-type ColumnType int
-
-const (
-	NULL = iota
-	INTEGER
-	REAL
-	TEXT
-	BLOB
-)
-
-func (t ColumnType) String() string {
-	return []string{"NULL", "INTEGER", "REAL", "TEXT", "BLOB"}[t]
+func ColTypeSQLString(t sqlite.ColumnType) string {
+	switch t {
+	case sqlite.SQLITE_INTEGER:
+		return "INTEGER"
+	case sqlite.SQLITE_FLOAT:
+		return "FLOAT"
+	case sqlite.SQLITE_TEXT:
+		return "TEXT"
+	case sqlite.SQLITE_BLOB:
+		return "BLOB"
+	case sqlite.SQLITE_NULL:
+		return "NULL"
+	default:
+		return "<unknown sqlite datatype>"
+	}
 }
 
 type Column struct {
 	Name    string
-	Type    ColumnType
+	Type    sqlite.ColumnType
 	NotNull bool
 	Hidden  bool
 	Filters []sqlite.ConstraintOp
 	// OrderBy bool
+}
+
+func (c Column) SQLType() string {
+	return ColTypeSQLString(c.Type)
 }
 
 type Constraint struct {
@@ -40,7 +47,7 @@ type Constraint struct {
 	Value    sqlite.Value
 }
 
-type GetIteratorFunc func(arguments []Constraint) (Iterator, error)
+type GetIteratorFunc func(constraints []Constraint) (Iterator, error)
 
 func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc) sqlite.Module {
 	return &tableFuncModule{name, columns, newIterator}
@@ -76,7 +83,7 @@ func (m *tableFuncModule) createTableSQL() (string, error) {
 	// TODO needs to support WITHOUT ROWID, PRIMARY KEY, NOT NULL
 	const declare = `CREATE TABLE {{ .Name }} (
   {{- range $c, $col := .Columns }}
-    {{ .Name }} {{ .Type }}{{ if .Hidden }} HIDDEN{{ end }}{{ if columnComma $c }},{{ end }}
+    {{ .Name }} {{ .SQLType }}{{ if .Hidden }} HIDDEN{{ end }}{{ if columnComma $c }},{{ end }}
   {{- end }}
 )`
 
@@ -232,7 +239,7 @@ func (c *tableFuncCursor) Column(ctx *sqlite.Context, col int) error {
 			return nil
 		}
 		switch c.columns[col].Type {
-		case INTEGER:
+		case sqlite.SQLITE_INTEGER:
 			ctx.ResultInt(val.(int))
 		}
 	} else {

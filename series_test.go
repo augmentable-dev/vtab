@@ -44,10 +44,10 @@ func (i *seriesIter) Next() (vtab.Row, error) {
 
 func TestSeries(t *testing.T) {
 	cols := []vtab.Column{
-		{"value", vtab.INTEGER, false, false, nil},
-		{"start", vtab.INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
-		{"stop", vtab.INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
-		{"step", vtab.INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{"value", sqlite.SQLITE_INTEGER, false, false, nil},
+		{"start", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{"stop", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{"step", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 	}
 	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint) (vtab.Iterator, error) {
 		// defaults
