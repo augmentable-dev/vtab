@@ -2,10 +2,10 @@ package vtab
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"text/template"
 
 	"go.riyazali.net/sqlite"
@@ -34,7 +34,13 @@ type Column struct {
 	// OrderBy bool
 }
 
-type GetIteratorFunc func(arguments []sqlite.Value) (Iterator, error)
+type Constraint struct {
+	ColIndex int
+	Op       sqlite.ConstraintOp
+	Value    sqlite.Value
+}
+
+type GetIteratorFunc func(arguments []Constraint) (Iterator, error)
 
 func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc) sqlite.Module {
 	return &tableFuncModule{name, columns, newIterator}
@@ -126,10 +132,9 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 	// start with a relatively high cost
 	cost := 1000.0
 	usage := make([]*sqlite.ConstraintUsage, len(input.Constraints))
-	idxNameParts := make([]string, 0)
+	idx := make([]Constraint, 0, len(input.Constraints))
 
 	// iterate over constraints
-	usedCsts := 0
 	for cst, constraint := range input.Constraints {
 		usage[cst] = &sqlite.ConstraintUsage{}
 
@@ -144,16 +149,23 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 			// if there's a match, reduce the cost (to prefer usage of this constraint)
 			if filter == constraint.Op {
 				cost -= float64(100*f + 1)
-				usedCsts++
-				usage[cst].ArgvIndex = usedCsts
-				idxNameParts = append(idxNameParts, fmt.Sprintf("%s-%v", col.Name, filter))
+				usage[cst].ArgvIndex = len(idx) + 1
+				idx = append(idx, Constraint{
+					ColIndex: constraint.ColumnIndex,
+					Op:       filter,
+				})
 			}
 		}
 	}
 
+	idxStr, err := json.Marshal(idx)
+	if err != nil {
+		return nil, err
+	}
+
 	return &sqlite.IndexInfoOutput{
 		EstimatedCost:   cost,
-		IndexString:     strings.Join(idxNameParts, ","),
+		IndexString:     string(idxStr),
 		ConstraintUsage: usage,
 	}, nil
 }
@@ -165,7 +177,17 @@ func (t *tableFuncTable) Disconnect() error {
 func (t *tableFuncTable) Destroy() error { return nil }
 
 func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Value) error {
-	iter, err := c.getIterator(values)
+	constraints := make([]Constraint, len(values))
+	err := json.Unmarshal([]byte(idxName), &constraints)
+	if err != nil {
+		return err
+	}
+
+	for c := range constraints {
+		constraints[c].Value = values[c]
+	}
+
+	iter, err := c.getIterator(constraints)
 	if err != nil {
 		return err
 	}

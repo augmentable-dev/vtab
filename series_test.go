@@ -49,24 +49,24 @@ func TestSeries(t *testing.T) {
 		{"stop", vtab.INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 		{"step", vtab.INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 	}
-	m := vtab.NewTableFunc("series", cols, func(args []sqlite.Value) (vtab.Iterator, error) {
+	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint) (vtab.Iterator, error) {
 		// defaults
 		start := 0
 		stop := 100
 		step := 1
-		// based on # of args to series(...), override defaults
-		switch len(args) {
-		case 0:
-			break
-		case 1:
-			start = args[0].Int()
-		case 2:
-			start = args[0].Int()
-			stop = args[1].Int()
-		case 3:
-			start = args[0].Int()
-			stop = args[1].Int()
-			step = args[2].Int()
+
+		// override defaults based on any equality constraints (arguments to the table valued func)
+		for _, constraint := range constraints {
+			if constraint.Op == sqlite.INDEX_CONSTRAINT_EQ {
+				switch constraint.ColIndex {
+				case 1:
+					start = constraint.Value.Int()
+				case 2:
+					stop = constraint.Value.Int()
+				case 3:
+					step = constraint.Value.Int()
+				}
+			}
 		}
 
 		return &seriesIter{start, start, stop, step}, nil
@@ -88,7 +88,7 @@ func TestSeries(t *testing.T) {
 	defer db.Close()
 
 	// TODO edit this query to see different results
-	rows, err := db.Query("select * from series(10, 100, 30) limit 10")
+	rows, err := db.Query("select * from series(50, 200, 10)")
 	if err != nil {
 		t.Fatal(err)
 	}
