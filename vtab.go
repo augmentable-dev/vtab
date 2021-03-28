@@ -241,6 +241,8 @@ func (c *tableFuncCursor) Column(ctx *sqlite.Context, col int) error {
 		switch c.columns[col].Type {
 		case sqlite.SQLITE_INTEGER:
 			ctx.ResultInt(val.(int))
+		case sqlite.SQLITE_TEXT:
+			ctx.ResultText(val.(string))
 		}
 	} else {
 		return fmt.Errorf("unexpected column")
