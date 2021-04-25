@@ -1,4 +1,4 @@
-.PHONY: clean vet test lint test-cover bench
+.PHONY: clean vet test lint
 
 # default task invoked while running make
 all: clean test
@@ -14,6 +14,9 @@ test: .build/sqlite3/sqlite3.c
 
 vet: .build/sqlite3/sqlite3.c
 	@CGO_LDFLAGS="${CGO_LDFLAGS}" go vet -v -tags="libsqlite3,sqlite_json1" ./...
+
+lint: .build/sqlite3/sqlite3.c
+	@CGO_LDFLAGS="${CGO_LDFLAGS}" golangci-lint run --build-tags libsqlite3,sqlite_json1
 
 # target to download sqlite3 amalgamation code
 .build/sqlite3/sqlite3.c:
