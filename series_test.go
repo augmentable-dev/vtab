@@ -17,6 +17,7 @@ type seriesIter struct {
 	start   int
 	stop    int
 	step    int
+	order   vtab.Orders
 }
 
 func (i *seriesIter) Column(c int) (interface{}, error) {
@@ -35,21 +36,30 @@ func (i *seriesIter) Column(c int) (interface{}, error) {
 }
 
 func (i *seriesIter) Next() (vtab.Row, error) {
-	i.current += i.step
-	if i.current > i.stop {
-		return nil, io.EOF
+	switch i.order {
+	case vtab.ASC:
+		i.current += i.step
+		if i.current > i.stop {
+			return nil, io.EOF
+		}
+	case vtab.DESC:
+		i.current -= i.step
+		if i.current < i.start {
+			return nil, io.EOF
+		}
 	}
+
 	return i, nil
 }
 
 func TestSeries(t *testing.T) {
 	cols := []vtab.Column{
-		{"value", sqlite.SQLITE_INTEGER, false, false, nil},
-		{"start", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
-		{"stop", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
-		{"step", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{Name: "value", Type: sqlite.SQLITE_INTEGER, OrderBy: vtab.ASC | vtab.DESC},
+		{Name: "start", Type: sqlite.SQLITE_INTEGER, Hidden: true, Filters: []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{Name: "stop", Type: sqlite.SQLITE_INTEGER, Hidden: true, Filters: []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+		{Name: "step", Type: sqlite.SQLITE_INTEGER, Hidden: true, Filters: []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 	}
-	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint) (vtab.Iterator, error) {
+	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
 		// defaults
 		start := 0
 		stop := 100
@@ -69,7 +79,20 @@ func TestSeries(t *testing.T) {
 			}
 		}
 
-		return &seriesIter{start, start, stop, step}, nil
+		// by default, current is the starting value and the order is ascending
+		current := start
+		valueOrder := vtab.ASC
+
+		// if the query wants the series ordered by value in reverse (desc)
+		// tell the implementation to iterate in reverse
+		if len(order) == 1 && order[0].ColumnIndex == 0 {
+			if order[0].Desc {
+				valueOrder = vtab.DESC
+				current = stop
+			}
+		}
+
+		return &seriesIter{current, start, stop, step, valueOrder}, nil
 	})
 
 	sqlite.Register(func(api *sqlite.ExtensionApi) (sqlite.ErrorCode, error) {
@@ -88,7 +111,7 @@ func TestSeries(t *testing.T) {
 	defer db.Close()
 
 	// TODO edit this query to see different results
-	rows, err := db.Query("select * from series(50, 200, 10)")
+	rows, err := db.Query("select * from series(50, 200, 50) order by value desc")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,50 @@
+name: tests
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go 1.16
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.16.3
+      id: go
+
+    - name: Check out source
+      uses: actions/checkout@v1
+
+    - name: Set-Up SQLite
+      run: make .build/sqlite3/sqlite3.c
+
+    - name: Vet
+      run: make vet
+    
+    - name: Test
+      run: make test
+  
+  # TODO(patrickdevivo) the following isn't working in GitHub actions
+  # appears to timeout, not sure why, but something with the CGO flags not being picked up?
+
+  # lint:
+  #   name: Lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+
+  #     - name: Set-Up SQLite
+  #       run: make .build/sqlite3/sqlite3.c
+
+  #     - name: golangci-lint
+  #       uses: golangci/golangci-lint-action@v2
+  #       with:
+  #         version: latest
+  #         args: --build-tags libsqlite3,sqlite_json1
+  #       env:
+  #         CGO_LDFLAGS: "-Wl,--unresolved-symbols=ignore-in-object-files"

@@ -28,13 +28,21 @@ func ColTypeSQLString(t sqlite.ColumnType) string {
 	}
 }
 
+type Orders uint8
+
+const (
+	NONE Orders = iota
+	DESC
+	ASC
+)
+
 type Column struct {
 	Name    string
 	Type    sqlite.ColumnType
 	NotNull bool
 	Hidden  bool
 	Filters []sqlite.ConstraintOp
-	// OrderBy bool
+	OrderBy Orders
 }
 
 func (c Column) SQLType() string {
@@ -47,7 +55,7 @@ type Constraint struct {
 	Value    sqlite.Value
 }
 
-type GetIteratorFunc func(constraints []Constraint) (Iterator, error)
+type GetIteratorFunc func(constraints []Constraint, order []*sqlite.OrderBy) (Iterator, error)
 
 func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc) sqlite.Module {
 	return &tableFuncModule{name, columns, newIterator}
@@ -135,11 +143,33 @@ func (t *tableFuncTable) Open() (sqlite.VirtualCursor, error) {
 	return &tableFuncCursor{t, nil, 0, nil}, nil
 }
 
+type index struct {
+	Constraints []Constraint
+	Orders      []*sqlite.OrderBy
+}
+
 func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexInfoOutput, error) {
 	// start with a relatively high cost
 	cost := 1000.0
 	usage := make([]*sqlite.ConstraintUsage, len(input.Constraints))
-	idx := make([]Constraint, 0, len(input.Constraints))
+	idx := &index{
+		Constraints: make([]Constraint, 0, len(input.Constraints)),
+		Orders:      make([]*sqlite.OrderBy, 0),
+	}
+
+	orderByUsed := true
+	for _, order := range input.OrderBy {
+		col := t.columns[order.ColumnIndex]
+		if col.OrderBy&ASC != 0 && !order.Desc {
+			idx.Orders = append(idx.Orders, order)
+			continue
+		}
+		if col.OrderBy&DESC != 0 && order.Desc {
+			idx.Orders = append(idx.Orders, order)
+			continue
+		}
+		orderByUsed = false
+	}
 
 	// iterate over constraints
 	for cst, constraint := range input.Constraints {
@@ -156,8 +186,8 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 			// if there's a match, reduce the cost (to prefer usage of this constraint)
 			if filter == constraint.Op {
 				cost -= float64(100*f + 1)
-				usage[cst].ArgvIndex = len(idx) + 1
-				idx = append(idx, Constraint{
+				usage[cst].ArgvIndex = len(idx.Constraints) + 1
+				idx.Constraints = append(idx.Constraints, Constraint{
 					ColIndex: constraint.ColumnIndex,
 					Op:       filter,
 				})
@@ -174,6 +204,7 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 		EstimatedCost:   cost,
 		IndexString:     string(idxStr),
 		ConstraintUsage: usage,
+		OrderByConsumed: orderByUsed,
 	}, nil
 }
 
@@ -184,17 +215,17 @@ func (t *tableFuncTable) Disconnect() error {
 func (t *tableFuncTable) Destroy() error { return nil }
 
 func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Value) error {
-	constraints := make([]Constraint, len(values))
-	err := json.Unmarshal([]byte(idxName), &constraints)
+	var idx index
+	err := json.Unmarshal([]byte(idxName), &idx)
 	if err != nil {
 		return err
 	}
 
-	for c := range constraints {
-		constraints[c].Value = values[c]
+	for c := range idx.Constraints {
+		idx.Constraints[c].Value = values[c]
 	}
 
-	iter, err := c.getIterator(constraints)
+	iter, err := c.getIterator(idx.Constraints, idx.Orders)
 	if err != nil {
 		return err
 	}

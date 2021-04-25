@@ -10,10 +10,10 @@ func TestCreateTableSQL(t *testing.T) {
 	m := &tableFuncModule{
 		name: "test_table",
 		columns: []Column{
-			{"test_one", sqlite.SQLITE_TEXT, false, false, nil},
-			{"test_two", sqlite.SQLITE_INTEGER, false, false, nil},
-			{"test_three", sqlite.SQLITE_BLOB, false, false, nil},
-			{"test_arg", sqlite.SQLITE_TEXT, false, true, nil},
+			{Name: "test_one", Type: sqlite.SQLITE_TEXT},
+			{Name: "test_two", Type: sqlite.SQLITE_INTEGER},
+			{Name: "test_three", Type: sqlite.SQLITE_BLOB},
+			{Name: "test_arg", Type: sqlite.SQLITE_TEXT, Hidden: true},
 		},
 	}
 
