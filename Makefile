@@ -14,16 +14,16 @@ lint: .build/sqlite3/sqlite3.c
 
 # target to download sqlite3 amalgamation code
 .build/sqlite3/sqlite3.c:
-	$(call log, $(CYAN), "downloading sqlite3 amalgamation source v3.33.0")
+	$(call log, $(CYAN), "downloading sqlite3 amalgamation source v3.35.0")
 	$(eval SQLITE_DOWNLOAD_DIR = $(shell mktemp -d))
-	@curl -sSLo $(SQLITE_DOWNLOAD_DIR)/sqlite3.zip https://www.sqlite.org/2020/sqlite-amalgamation-3330000.zip
-	$(call log, $(GREEN), "downloaded sqlite3 amalgamation source v3.33.0")
+	@curl -sSLo $(SQLITE_DOWNLOAD_DIR)/sqlite3.zip https://www.sqlite.org/2021/sqlite-amalgamation-3350000.zip
+	$(call log, $(GREEN), "downloaded sqlite3 amalgamation source v3.35.0")
 	$(call log, $(CYAN), "unzipping to $(SQLITE_DOWNLOAD_DIR)")
 	@(cd $(SQLITE_DOWNLOAD_DIR) && unzip sqlite3.zip > /dev/null)
 	$(call log, $(CYAN), "moving to .build/sqlite3")
 	@rm -rf .build/sqlite3 > /dev/null
 	@mkdir -p .build/sqlite3
-	@mv $(SQLITE_DOWNLOAD_DIR)/sqlite-amalgamation-3330000/* .build/sqlite3
+	@mv $(SQLITE_DOWNLOAD_DIR)/sqlite-amalgamation-3350000/* .build/sqlite3
 
 clean:
 	$(call log, $(YELLOW), "nuking .build/")
