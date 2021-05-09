@@ -1,22 +1,16 @@
-.PHONY: clean vet test lint
+.PHONY: clean vet test lint lint-ci
 
 # default task invoked while running make
 all: clean test
 
-# pass these flags to linker to suppress missing symbol errors in intermediate artifacts
-export CGO_LDFLAGS = -Wl,--unresolved-symbols=ignore-in-object-files
-ifeq ($(shell uname -s),Darwin)
-	export CGO_LDFLAGS = -Wl,-undefined,dynamic_lookup
-endif
-
 test: .build/sqlite3/sqlite3.c
-	@CGO_LDFLAGS="${CGO_LDFLAGS}" go test -v -tags="libsqlite3,sqlite_json1" ./...
+	go test -v -tags="libsqlite3,sqlite_json1" ./...
 
 vet: .build/sqlite3/sqlite3.c
-	@CGO_LDFLAGS="${CGO_LDFLAGS}" go vet -v -tags="libsqlite3,sqlite_json1" ./...
+	go vet -v -tags="libsqlite3,sqlite_json1" ./...
 
 lint: .build/sqlite3/sqlite3.c
-	@CGO_LDFLAGS="${CGO_LDFLAGS}" golangci-lint run --build-tags libsqlite3,sqlite_json1
+	golangci-lint run --build-tags libsqlite3,sqlite_json1
 
 # target to download sqlite3 amalgamation code
 .build/sqlite3/sqlite3.c:
