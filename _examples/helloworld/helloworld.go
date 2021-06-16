@@ -8,7 +8,7 @@ import (
 	"go.riyazali.net/sqlite"
 )
 
-type Iter struct { //implements iter and row interface
+type Iter struct {
 	current int
 	total   int
 }
@@ -34,7 +34,7 @@ func (i *Iter) Next() (vtab.Row, error) {
 
 var cols = []vtab.Column{
 	{"message", sqlite.SQLITE_TEXT, false, false, nil, vtab.NONE},
-	{"times", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}, vtab.NONE}, //what does this constraint do
+	{"times", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}, vtab.NONE},
 }
 
 func init() {
@@ -42,7 +42,7 @@ func init() {
 		// defaults
 		total := 10
 
-		// override defaults based on any equality constraints (arguments to the table valued func) for user supplied parameters.
+		// override defaults based on any equality constraints (arguments to the table valued func)
 		for _, constraint := range constraints {
 			if constraint.Op == sqlite.INDEX_CONSTRAINT_EQ {
 				switch constraint.ColIndex {
