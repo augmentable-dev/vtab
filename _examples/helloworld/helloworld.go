@@ -33,12 +33,12 @@ func (i *Iter) Next() (vtab.Row, error) {
 }
 
 var cols = []vtab.Column{
-	{"message", sqlite.SQLITE_TEXT, false, false, nil},
-	{"times", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
+	{"message", sqlite.SQLITE_TEXT, false, false, nil, vtab.NONE},
+	{"times", sqlite.SQLITE_INTEGER, false, true, []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}, vtab.NONE},
 }
 
 func init() {
-	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint) (vtab.Iterator, error) {
+	m := vtab.NewTableFunc("helloworld", cols, func(constraints []vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
 		// defaults
 		total := 10
 
