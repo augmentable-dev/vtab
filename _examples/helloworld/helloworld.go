@@ -13,15 +13,16 @@ type Iter struct {
 	total   int
 }
 
-func (i *Iter) Column(c int) (interface{}, error) {
+func (i *Iter) Column(ctx *sqlite.Context, c int) error {
 	switch c {
 	case 0:
-		return fmt.Sprintf("hello, world x=%d", i.current), nil
+		ctx.ResultText(fmt.Sprintf("hello, world x=%d", i.current))
 	case 1:
-		return i.total, nil
+		ctx.ResultInt(i.total)
+	default:
+		return fmt.Errorf("unknown column")
 	}
-
-	return nil, fmt.Errorf("unknown column")
+	return nil
 }
 
 func (i *Iter) Next() (vtab.Row, error) {

@@ -20,19 +20,21 @@ type seriesIter struct {
 	order   vtab.Orders
 }
 
-func (i *seriesIter) Column(c int) (interface{}, error) {
+func (i *seriesIter) Column(ctx *sqlite.Context, c int) error {
 	switch c {
 	case 0:
-		return i.current, nil
+		ctx.ResultInt(i.current)
 	case 1:
-		return i.start, nil
+		ctx.ResultInt(i.start)
 	case 2:
-		return i.stop, nil
+		ctx.ResultInt(i.stop)
 	case 3:
-		return i.step, nil
+		ctx.ResultInt(i.step)
+	default:
+		return fmt.Errorf("unknown column")
 	}
 
-	return nil, fmt.Errorf("unknown column")
+	return nil
 }
 
 func (i *seriesIter) Next() (vtab.Row, error) {

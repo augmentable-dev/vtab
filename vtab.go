@@ -83,7 +83,7 @@ type Iterator interface {
 }
 
 type Row interface {
-	Column(int) (interface{}, error)
+	Column(ctx *sqlite.Context, col int) error
 }
 
 // createTableSQL produces the SQL to declare a new virtual table
@@ -259,27 +259,7 @@ func (c *tableFuncCursor) Next() error {
 }
 
 func (c *tableFuncCursor) Column(ctx *sqlite.Context, col int) error {
-	val, err := c.current.Column(col)
-	if err != nil {
-		return err
-	}
-
-	if col < len(c.columns) {
-		if val == nil {
-			ctx.ResultNull()
-			return nil
-		}
-		switch c.columns[col].Type {
-		case sqlite.SQLITE_INTEGER:
-			ctx.ResultInt(val.(int))
-		case sqlite.SQLITE_TEXT:
-			ctx.ResultText(val.(string))
-		}
-	} else {
-		return fmt.Errorf("unexpected column")
-	}
-
-	return nil
+	return c.current.Column(ctx, col)
 }
 
 func (c *tableFuncCursor) Eof() bool {
