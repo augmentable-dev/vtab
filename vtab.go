@@ -36,12 +36,18 @@ const (
 	ASC
 )
 
+type ColumnFilter struct {
+	Op        sqlite.ConstraintOp
+	Required  bool
+	OmitCheck bool
+}
+
 type Column struct {
 	Name    string
 	Type    sqlite.ColumnType
 	NotNull bool
 	Hidden  bool
-	Filters []sqlite.ConstraintOp
+	Filters []*ColumnFilter
 	OrderBy Orders
 }
 
@@ -175,22 +181,21 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 	for cst, constraint := range input.Constraints {
 		usage[cst] = &sqlite.ConstraintUsage{}
 
-		// ignore unusable
 		if !constraint.Usable {
-			continue
+			return nil, sqlite.SQLITE_CONSTRAINT
 		}
 
 		// iterate over the declared constraints the column supports
 		col := t.columns[constraint.ColumnIndex]
-		for f, filter := range col.Filters {
+		for _, filter := range col.Filters {
 			// if there's a match, reduce the cost (to prefer usage of this constraint)
-			if filter == constraint.Op {
-				cost -= float64(100*f + 1)
+			if filter.Op == constraint.Op {
+				cost -= 10
 				usage[cst].ArgvIndex = len(idx.Constraints) + 1
-				usage[cst].Omit = true
+				usage[cst].Omit = filter.OmitCheck
 				idx.Constraints = append(idx.Constraints, &Constraint{
 					ColIndex: constraint.ColumnIndex,
-					Op:       filter,
+					Op:       filter.Op,
 				})
 			}
 		}
