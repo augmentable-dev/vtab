@@ -36,12 +36,18 @@ const (
 	ASC
 )
 
+type ColumnFilter struct {
+	Op        sqlite.ConstraintOp
+	Required  bool
+	OmitCheck bool
+}
+
 type Column struct {
 	Name    string
 	Type    sqlite.ColumnType
 	NotNull bool
 	Hidden  bool
-	Filters []sqlite.ConstraintOp
+	Filters []*ColumnFilter
 	OrderBy Orders
 }
 
@@ -52,10 +58,10 @@ func (c Column) SQLType() string {
 type Constraint struct {
 	ColIndex int
 	Op       sqlite.ConstraintOp
-	Value    sqlite.Value
+	Value    *sqlite.Value
 }
 
-type GetIteratorFunc func(constraints []Constraint, order []*sqlite.OrderBy) (Iterator, error)
+type GetIteratorFunc func(constraints []*Constraint, order []*sqlite.OrderBy) (Iterator, error)
 
 func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc) sqlite.Module {
 	return &tableFuncModule{name, columns, newIterator}
@@ -144,7 +150,7 @@ func (t *tableFuncTable) Open() (sqlite.VirtualCursor, error) {
 }
 
 type index struct {
-	Constraints []Constraint
+	Constraints []*Constraint
 	Orders      []*sqlite.OrderBy
 }
 
@@ -153,7 +159,7 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 	cost := 1000.0
 	usage := make([]*sqlite.ConstraintUsage, len(input.Constraints))
 	idx := &index{
-		Constraints: make([]Constraint, 0, len(input.Constraints)),
+		Constraints: make([]*Constraint, 0, len(input.Constraints)),
 		Orders:      make([]*sqlite.OrderBy, 0),
 	}
 
@@ -175,21 +181,21 @@ func (t *tableFuncTable) BestIndex(input *sqlite.IndexInfoInput) (*sqlite.IndexI
 	for cst, constraint := range input.Constraints {
 		usage[cst] = &sqlite.ConstraintUsage{}
 
-		// ignore unusable
 		if !constraint.Usable {
-			continue
+			return nil, sqlite.SQLITE_CONSTRAINT
 		}
 
 		// iterate over the declared constraints the column supports
 		col := t.columns[constraint.ColumnIndex]
-		for f, filter := range col.Filters {
+		for _, filter := range col.Filters {
 			// if there's a match, reduce the cost (to prefer usage of this constraint)
-			if filter == constraint.Op {
-				cost -= float64(100*f + 1)
+			if filter.Op == constraint.Op {
+				cost -= 10
 				usage[cst].ArgvIndex = len(idx.Constraints) + 1
-				idx.Constraints = append(idx.Constraints, Constraint{
+				usage[cst].Omit = filter.OmitCheck
+				idx.Constraints = append(idx.Constraints, &Constraint{
 					ColIndex: constraint.ColumnIndex,
-					Op:       filter,
+					Op:       filter.Op,
 				})
 			}
 		}
@@ -222,7 +228,7 @@ func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Va
 	}
 
 	for c := range idx.Constraints {
-		idx.Constraints[c].Value = values[c]
+		idx.Constraints[c].Value = &values[c]
 	}
 
 	iter, err := c.getIterator(idx.Constraints, idx.Orders)

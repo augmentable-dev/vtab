@@ -1,9 +1,9 @@
 # compile all extensions under _examples/
 
-.PHONY: all
-all: helloworld.so
-
 .PHONY: clean
+
+all: clean helloworld.so
+
 clean:
 	-rm -f helloworld.so
 
