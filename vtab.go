@@ -222,10 +222,8 @@ func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Va
 		return err
 	}
 
-	fmt.Println(idxName)
 	for c := range idx.Constraints {
 		idx.Constraints[c].Value = &values[c]
-		fmt.Println(values[c].Type(), values[c].Int(), values[c].Text())
 	}
 
 	iter, err := c.getIterator(idx.Constraints, idx.Orders)
