@@ -61,7 +61,7 @@ func TestSeries(t *testing.T) {
 		{Name: "stop", Type: sqlite.SQLITE_INTEGER, Hidden: true, Filters: []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 		{Name: "step", Type: sqlite.SQLITE_INTEGER, Hidden: true, Filters: []sqlite.ConstraintOp{sqlite.INDEX_CONSTRAINT_EQ}},
 	}
-	m := vtab.NewTableFunc("series", cols, func(constraints []vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
+	m := vtab.NewTableFunc("series", cols, func(constraints []*vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
 		// defaults
 		start := 0
 		stop := 100
