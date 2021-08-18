@@ -2,18 +2,16 @@ package vtab
 
 import (
 	"testing"
-
-	"go.riyazali.net/sqlite"
 )
 
 func TestCreateTableSQL(t *testing.T) {
 	m := &tableFuncModule{
 		name: "test_table",
 		columns: []Column{
-			{Name: "test_one", Type: sqlite.SQLITE_TEXT},
-			{Name: "test_two", Type: sqlite.SQLITE_INTEGER},
-			{Name: "test_three", Type: sqlite.SQLITE_BLOB},
-			{Name: "test_arg", Type: sqlite.SQLITE_TEXT, Hidden: true},
+			{Name: "test_one", Type: "TEXT"},
+			{Name: "test_two", Type: "INTEGER"},
+			{Name: "test_three", Type: "BLOB"},
+			{Name: "test_arg", Type: "TEXT", Hidden: true},
 		},
 	}
 

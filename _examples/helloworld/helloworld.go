@@ -37,9 +37,9 @@ func (i *Iter) Next() (vtab.Row, error) {
 }
 
 var cols = []vtab.Column{
-	{"message", sqlite.SQLITE_TEXT, false, false, nil, vtab.NONE},
-	{"times", sqlite.SQLITE_INTEGER, false, true, []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}, vtab.NONE},
-	{"name", sqlite.SQLITE_TEXT, false, true, []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}, vtab.NONE},
+	{"message", "TEXT", false, false, nil, vtab.NONE},
+	{"times", "INTEGER", false, true, []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}, vtab.NONE},
+	{"name", "TEXT", false, true, []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}, vtab.NONE},
 }
 
 func init() {
