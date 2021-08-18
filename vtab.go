@@ -11,23 +11,6 @@ import (
 	"go.riyazali.net/sqlite"
 )
 
-func ColTypeSQLString(t sqlite.ColumnType) string {
-	switch t {
-	case sqlite.SQLITE_INTEGER:
-		return "INTEGER"
-	case sqlite.SQLITE_FLOAT:
-		return "FLOAT"
-	case sqlite.SQLITE_TEXT:
-		return "TEXT"
-	case sqlite.SQLITE_BLOB:
-		return "BLOB"
-	case sqlite.SQLITE_NULL:
-		return "NULL"
-	default:
-		return "<unknown sqlite datatype>"
-	}
-}
-
 type Orders uint8
 
 const (
@@ -44,15 +27,11 @@ type ColumnFilter struct {
 
 type Column struct {
 	Name    string
-	Type    sqlite.ColumnType
+	Type    string
 	NotNull bool
 	Hidden  bool
 	Filters []*ColumnFilter
 	OrderBy Orders
-}
-
-func (c Column) SQLType() string {
-	return ColTypeSQLString(c.Type)
 }
 
 type Constraint struct {
@@ -97,7 +76,7 @@ func (m *tableFuncModule) createTableSQL() (string, error) {
 	// TODO needs to support WITHOUT ROWID, PRIMARY KEY, NOT NULL
 	const declare = `CREATE TABLE {{ .Name }} (
   {{- range $c, $col := .Columns }}
-    {{ .Name }} {{ .SQLType }}{{ if .Hidden }} HIDDEN{{ end }}{{ if columnComma $c }},{{ end }}
+    {{ .Name }} {{ .Type }}{{ if .Hidden }} HIDDEN{{ end }}{{ if columnComma $c }},{{ end }}
   {{- end }}
 )`
 
