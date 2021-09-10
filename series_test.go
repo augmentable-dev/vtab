@@ -127,7 +127,7 @@ func TestSeriesSimple(t *testing.T) {
 	totalBefore := totalIterations
 
 	var contents []string
-	db.Select(&contents, "select value from series(0, 100, 1)")
+	err = db.Select(&contents, "select value from series(0, 100, 1)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestSeriesDescGT(t *testing.T) {
 	totalBefore := totalIterations
 
 	var contents []string
-	db.Select(&contents, "select value from series(0, 100, 1) where value > 50 order by value desc")
+	err = db.Select(&contents, "select value from series(0, 100, 1) where value > 50 order by value desc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestSeriesDescGTE(t *testing.T) {
 	totalBefore := totalIterations
 
 	var contents []string
-	db.Select(&contents, "select value from series(0, 100, 1) where value >= 50 order by value desc")
+	err = db.Select(&contents, "select value from series(0, 100, 1) where value >= 50 order by value desc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestSeriesAscLT(t *testing.T) {
 	totalBefore := totalIterations
 
 	var contents []string
-	db.Select(&contents, "select value from series(0, 100, 1) where value < 50 order by value asc")
+	err = db.Select(&contents, "select value from series(0, 100, 1) where value < 50 order by value asc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSeriesAscLE(t *testing.T) {
 	totalBefore := totalIterations
 
 	var contents []string
-	db.Select(&contents, "select value from series(0, 100, 1) where value <= 50 order by value asc")
+	err = db.Select(&contents, "select value from series(0, 100, 1) where value <= 50 order by value asc")
 	if err != nil {
 		t.Fatal(err)
 	}
