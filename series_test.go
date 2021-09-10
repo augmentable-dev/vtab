@@ -1,34 +1,38 @@
 package vtab_test
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"testing"
 
 	"github.com/augmentable-dev/vtab"
 	_ "github.com/augmentable-dev/vtab/pkg/sqlite"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 	"go.riyazali.net/sqlite"
 )
 
+var totalIterations int
+
 type seriesIter struct {
-	current int
-	start   int
-	stop    int
-	step    int
-	order   vtab.Orders
+	current         int
+	start           int
+	stop            int
+	step            int
+	order           vtab.Orders
+	totalIterations int
 }
 
-func (i *seriesIter) Column(ctx *sqlite.Context, c int) error {
-	switch c {
-	case 0:
+func (i *seriesIter) Column(ctx vtab.Context, c int) error {
+	switch cols[c].Name {
+	case "value":
 		ctx.ResultInt(i.current)
-	case 1:
+	case "start":
 		ctx.ResultInt(i.start)
-	case 2:
+	case "stop":
 		ctx.ResultInt(i.stop)
-	case 3:
+	case "step":
 		ctx.ResultInt(i.step)
 	default:
 		return fmt.Errorf("unknown column")
@@ -38,6 +42,8 @@ func (i *seriesIter) Column(ctx *sqlite.Context, c int) error {
 }
 
 func (i *seriesIter) Next() (vtab.Row, error) {
+	i.totalIterations++
+	totalIterations++
 	switch i.order {
 	case vtab.ASC:
 		i.current += i.step
@@ -54,13 +60,17 @@ func (i *seriesIter) Next() (vtab.Row, error) {
 	return i, nil
 }
 
-func TestSeries(t *testing.T) {
-	cols := []vtab.Column{
-		{Name: "value", Type: "INTEGER", OrderBy: vtab.ASC | vtab.DESC},
-		{Name: "start", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
-		{Name: "stop", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
-		{Name: "step", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
-	}
+var cols = []vtab.Column{
+	{Name: "value", Type: "INTEGER", OrderBy: vtab.ASC | vtab.DESC, Filters: []*vtab.ColumnFilter{
+		{Op: sqlite.INDEX_CONSTRAINT_GT}, {Op: sqlite.INDEX_CONSTRAINT_GE},
+		{Op: sqlite.INDEX_CONSTRAINT_LT}, {Op: sqlite.INDEX_CONSTRAINT_LE},
+	}},
+	{Name: "start", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
+	{Name: "stop", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
+	{Name: "step", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
+}
+
+func init() {
 	m := vtab.NewTableFunc("series", cols, func(constraints []*vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
 		// defaults
 		start := 0
@@ -70,12 +80,12 @@ func TestSeries(t *testing.T) {
 		// override defaults based on any equality constraints (arguments to the table valued func)
 		for _, constraint := range constraints {
 			if constraint.Op == sqlite.INDEX_CONSTRAINT_EQ {
-				switch constraint.ColIndex {
-				case 1:
+				switch cols[constraint.ColIndex].Name {
+				case "start":
 					start = constraint.Value.Int()
-				case 2:
+				case "stop":
 					stop = constraint.Value.Int()
-				case 3:
+				case "step":
 					step = constraint.Value.Int()
 				}
 			}
@@ -94,8 +104,8 @@ func TestSeries(t *testing.T) {
 			}
 		}
 
-		return &seriesIter{current, start, stop, step, valueOrder}, nil
-	})
+		return &seriesIter{current, start, stop, step, valueOrder, 0}, nil
+	}, vtab.EarlyOrderByConstraintExit(true))
 
 	sqlite.Register(func(api *sqlite.ExtensionApi) (sqlite.ErrorCode, error) {
 		if err := api.CreateModule("series", m,
@@ -105,66 +115,129 @@ func TestSeries(t *testing.T) {
 		}
 		return sqlite.SQLITE_OK, nil
 	})
+}
 
-	db, err := sql.Open("sqlite3", ":memory:")
+func TestSeriesSimple(t *testing.T) {
+	db, err := sqlx.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	// TODO edit this query to see different results
-	rows, err := db.Query("select * from series(50, 200, 50) order by value desc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
+	totalBefore := totalIterations
 
-	_, contents, err := GetContents(rows)
+	var contents []string
+	db.Select(&contents, "select value from series(0, 100, 1)")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, r := range contents {
-		fmt.Println(r)
-	}
+	iterations := totalIterations - totalBefore
 
-	err = rows.Err()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Equal(t, 100, len(contents))
+	assert.Equal(t, 101, iterations)
+	assert.Equal(t, "1", contents[0])
+	assert.Equal(t, "2", contents[1])
+	assert.Equal(t, "99", contents[98])
+	assert.Equal(t, "100", contents[99])
 }
 
-func GetContents(rows *sql.Rows) (int, [][]string, error) {
-	count := 0
-	columns, err := rows.Columns()
+func TestSeriesDescGT(t *testing.T) {
+	db, err := sqlx.Open("sqlite3", ":memory:")
 	if err != nil {
-		return count, nil, err
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	totalBefore := totalIterations
+
+	var contents []string
+	db.Select(&contents, "select value from series(0, 100, 1) where value > 50 order by value desc")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	pointers := make([]interface{}, len(columns))
-	container := make([]sql.NullString, len(columns))
-	var ret [][]string
+	iterations := totalIterations - totalBefore
 
-	for i := range pointers {
-		pointers[i] = &container[i]
+	assert.Equal(t, 49, len(contents))
+	assert.Equal(t, 50, iterations)
+	assert.Equal(t, "99", contents[0])
+	assert.Equal(t, "98", contents[1])
+	assert.Equal(t, "52", contents[47])
+	assert.Equal(t, "51", contents[48])
+}
+
+func TestSeriesDescGTE(t *testing.T) {
+	db, err := sqlx.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	totalBefore := totalIterations
+
+	var contents []string
+	db.Select(&contents, "select value from series(0, 100, 1) where value >= 50 order by value desc")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for rows.Next() {
-		err = rows.Scan(pointers...)
-		if err != nil {
-			return count, nil, err
-		}
+	iterations := totalIterations - totalBefore
 
-		r := make([]string, len(columns))
-		for i, c := range container {
-			if c.Valid {
-				r[i] = c.String
-			} else {
-				r[i] = "NULL"
-			}
-		}
-		ret = append(ret, r)
+	assert.Equal(t, 50, len(contents))
+	assert.Equal(t, 51, iterations)
+	assert.Equal(t, "99", contents[0])
+	assert.Equal(t, "98", contents[1])
+	assert.Equal(t, "51", contents[48])
+	assert.Equal(t, "50", contents[49])
+}
+
+func TestSeriesAscLT(t *testing.T) {
+	db, err := sqlx.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return count, ret, err
+	defer db.Close()
 
+	totalBefore := totalIterations
+
+	var contents []string
+	db.Select(&contents, "select value from series(0, 100, 1) where value < 50 order by value asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	iterations := totalIterations - totalBefore
+
+	assert.Equal(t, 49, len(contents))
+	assert.Equal(t, 50, iterations)
+	assert.Equal(t, "1", contents[0])
+	assert.Equal(t, "2", contents[1])
+	assert.Equal(t, "48", contents[47])
+	assert.Equal(t, "49", contents[48])
+}
+
+func TestSeriesAscLE(t *testing.T) {
+	db, err := sqlx.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	totalBefore := totalIterations
+
+	var contents []string
+	db.Select(&contents, "select value from series(0, 100, 1) where value <= 50 order by value asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	iterations := totalIterations - totalBefore
+
+	assert.Equal(t, 50, len(contents))
+	assert.Equal(t, 51, iterations)
+	assert.Equal(t, "1", contents[0])
+	assert.Equal(t, "2", contents[1])
+	assert.Equal(t, "49", contents[48])
+	assert.Equal(t, "50", contents[49])
 }

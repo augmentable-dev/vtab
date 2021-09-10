@@ -14,7 +14,7 @@ type Iter struct {
 	name    string
 }
 
-func (i *Iter) Column(ctx *sqlite.Context, c int) error {
+func (i *Iter) Column(ctx vtab.Context, c int) error {
 	switch c {
 	case 0:
 		ctx.ResultText(fmt.Sprintf("hello, world x=%d, name=%s", i.current, i.name))
