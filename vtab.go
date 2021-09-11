@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"text/template"
 
 	"go.riyazali.net/sqlite"
@@ -303,8 +302,14 @@ outer:
 					}
 				case string:
 					limit := constraint.Value.Text()
-					comparison = strings.Compare(v, limit)
-					// value = []byte(fmt.Sprintf("%v", getter.value))
+					switch {
+					case v == limit:
+						comparison = 0
+					case v < limit:
+						comparison = -1
+					case v > limit:
+						comparison = 1
+					}
 				case float64:
 					limit := constraint.Value.Float()
 					switch {

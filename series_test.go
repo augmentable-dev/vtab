@@ -25,7 +25,7 @@ type seriesIter struct {
 }
 
 func (i *seriesIter) Column(ctx vtab.Context, c int) error {
-	switch cols[c].Name {
+	switch seriesCols[c].Name {
 	case "value":
 		ctx.ResultInt(i.current)
 	case "start":
@@ -60,7 +60,7 @@ func (i *seriesIter) Next() (vtab.Row, error) {
 	return i, nil
 }
 
-var cols = []vtab.Column{
+var seriesCols = []vtab.Column{
 	{Name: "value", Type: "INTEGER", OrderBy: vtab.ASC | vtab.DESC, Filters: []*vtab.ColumnFilter{
 		{Op: sqlite.INDEX_CONSTRAINT_GT}, {Op: sqlite.INDEX_CONSTRAINT_GE},
 		{Op: sqlite.INDEX_CONSTRAINT_LT}, {Op: sqlite.INDEX_CONSTRAINT_LE},
@@ -70,49 +70,55 @@ var cols = []vtab.Column{
 	{Name: "step", Type: "INTEGER", Hidden: true, Filters: []*vtab.ColumnFilter{{Op: sqlite.INDEX_CONSTRAINT_EQ}}},
 }
 
+var seriesModule = vtab.NewTableFunc("series", seriesCols, func(constraints []*vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
+	// defaults
+	start := 0
+	stop := 100
+	step := 1
+
+	// override defaults based on any equality constraints (arguments to the table valued func)
+	for _, constraint := range constraints {
+		if constraint.Op == sqlite.INDEX_CONSTRAINT_EQ {
+			switch seriesCols[constraint.ColIndex].Name {
+			case "start":
+				start = constraint.Value.Int()
+			case "stop":
+				stop = constraint.Value.Int()
+			case "step":
+				step = constraint.Value.Int()
+			}
+		}
+	}
+
+	// by default, current is the starting value and the order is ascending
+	current := start
+	valueOrder := vtab.ASC
+
+	// if the query wants the series ordered by value in reverse (desc)
+	// tell the implementation to iterate in reverse
+	if len(order) == 1 && order[0].ColumnIndex == 0 {
+		if order[0].Desc {
+			valueOrder = vtab.DESC
+			current = stop
+		}
+	}
+
+	return &seriesIter{current, start, stop, step, valueOrder, 0}, nil
+}, vtab.EarlyOrderByConstraintExit(true))
+
 func init() {
-	m := vtab.NewTableFunc("series", cols, func(constraints []*vtab.Constraint, order []*sqlite.OrderBy) (vtab.Iterator, error) {
-		// defaults
-		start := 0
-		stop := 100
-		step := 1
-
-		// override defaults based on any equality constraints (arguments to the table valued func)
-		for _, constraint := range constraints {
-			if constraint.Op == sqlite.INDEX_CONSTRAINT_EQ {
-				switch cols[constraint.ColIndex].Name {
-				case "start":
-					start = constraint.Value.Int()
-				case "stop":
-					stop = constraint.Value.Int()
-				case "step":
-					step = constraint.Value.Int()
-				}
-			}
-		}
-
-		// by default, current is the starting value and the order is ascending
-		current := start
-		valueOrder := vtab.ASC
-
-		// if the query wants the series ordered by value in reverse (desc)
-		// tell the implementation to iterate in reverse
-		if len(order) == 1 && order[0].ColumnIndex == 0 {
-			if order[0].Desc {
-				valueOrder = vtab.DESC
-				current = stop
-			}
-		}
-
-		return &seriesIter{current, start, stop, step, valueOrder, 0}, nil
-	}, vtab.EarlyOrderByConstraintExit(true))
-
 	sqlite.Register(func(api *sqlite.ExtensionApi) (sqlite.ErrorCode, error) {
-		if err := api.CreateModule("series", m,
+		if err := api.CreateModule("series", seriesModule,
 			sqlite.EponymousOnly(true),
 			sqlite.ReadOnly(true)); err != nil {
 			return sqlite.SQLITE_ERROR, err
 		}
+		if err := api.CreateModule("alphabet", alphabetModule,
+			sqlite.EponymousOnly(true),
+			sqlite.ReadOnly(true)); err != nil {
+			return sqlite.SQLITE_ERROR, err
+		}
+
 		return sqlite.SQLITE_OK, nil
 	})
 }
