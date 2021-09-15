@@ -21,7 +21,6 @@ const (
 
 type ColumnFilter struct {
 	Op        sqlite.ConstraintOp
-	Required  bool
 	OmitCheck bool
 }
 
@@ -42,14 +41,32 @@ type Constraint struct {
 
 type GetIteratorFunc func(constraints []*Constraint, order []*sqlite.OrderBy) (Iterator, error)
 
-func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc) sqlite.Module {
-	return &tableFuncModule{name, columns, newIterator}
+type options struct {
+	earlyOrderByConstraintExit bool
+}
+
+type OptFunc func(*options)
+
+// EarlyOrderByConstraintExit tells the table-func to end iteration early, if results are ordered by
+// a field that is also in a WHERE clause with one of a >,>=,<,<= that would warrant an early exit.
+// This assumes that the column in question has the GT, GE, LT, LE constraints registered.
+func EarlyOrderByConstraintExit(value bool) OptFunc {
+	return func(opts *options) { opts.earlyOrderByConstraintExit = value }
+}
+
+func NewTableFunc(name string, columns []Column, newIterator GetIteratorFunc, opts ...OptFunc) sqlite.Module {
+	opt := &options{}
+	for _, optFunc := range opts {
+		optFunc(opt)
+	}
+	return &tableFuncModule{name, columns, newIterator, opt}
 }
 
 type tableFuncModule struct {
 	name        string
 	columns     []Column
 	getIterator GetIteratorFunc
+	options     *options
 }
 
 type tableFuncTable struct {
@@ -58,17 +75,31 @@ type tableFuncTable struct {
 
 type tableFuncCursor struct {
 	*tableFuncTable
-	iterator Iterator
-	count    int
-	current  Row
+	iterator    Iterator
+	count       int
+	current     Row
+	order       []*sqlite.OrderBy
+	constraints []*Constraint
 }
 
 type Iterator interface {
 	Next() (Row, error)
 }
 
+type Context interface {
+	ResultInt(v int)
+	ResultInt64(v int64)
+	ResultFloat(v float64)
+	ResultNull()
+	ResultValue(v sqlite.Value)
+	ResultZeroBlob(n int64)
+	ResultText(v string)
+	ResultError(err error)
+	ResultPointer(val interface{})
+}
+
 type Row interface {
-	Column(ctx *sqlite.Context, col int) error
+	Column(ctx Context, col int) error
 }
 
 // createTableSQL produces the SQL to declare a new virtual table
@@ -125,7 +156,7 @@ func (m *tableFuncModule) Destroy() error {
 }
 
 func (t *tableFuncTable) Open() (sqlite.VirtualCursor, error) {
-	return &tableFuncCursor{t, nil, 0, nil}, nil
+	return &tableFuncCursor{t, nil, 0, nil, nil, nil}, nil
 }
 
 type index struct {
@@ -210,6 +241,9 @@ func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Va
 		idx.Constraints[c].Value = &values[c]
 	}
 
+	c.order = idx.Orders
+	c.constraints = idx.Constraints
+
 	iter, err := c.getIterator(idx.Constraints, idx.Orders)
 	if err != nil {
 		return err
@@ -229,6 +263,106 @@ func (c *tableFuncCursor) Filter(idxNum int, idxName string, values ...sqlite.Va
 	return nil
 }
 
+// earlyOrderByConstraintExit determines if there should be an early exit, based on supplied ORDER BYs
+// and any of <, >=, <, or <= constraints on corresponding columns
+func (c *tableFuncCursor) earlyOrderByConstraintExit() error {
+outer:
+	for _, order := range c.order {
+		for _, constraint := range c.constraints {
+			if order.ColumnIndex == constraint.ColIndex {
+				// limit := constraint.Value.Blob()
+
+				getter := &valueGetter{}
+				err := c.current.Column(getter, constraint.ColIndex)
+				if err != nil {
+					return err
+				}
+
+				var comparison int
+				switch v := getter.value.(type) {
+				case int:
+					limit := constraint.Value.Int()
+					switch {
+					case v == limit:
+						comparison = 0
+					case v < limit:
+						comparison = -1
+					case v > limit:
+						comparison = 1
+					}
+				case int64:
+					limit := constraint.Value.Int64()
+					switch {
+					case v == limit:
+						comparison = 0
+					case v < limit:
+						comparison = -1
+					case v > limit:
+						comparison = 1
+					}
+				case string:
+					limit := constraint.Value.Text()
+					switch {
+					case v == limit:
+						comparison = 0
+					case v < limit:
+						comparison = -1
+					case v > limit:
+						comparison = 1
+					}
+				case float64:
+					limit := constraint.Value.Float()
+					switch {
+					case v == limit:
+						comparison = 0
+					case v < limit:
+						comparison = -1
+					case v > limit:
+						comparison = 1
+					}
+				case []byte:
+					limit := constraint.Value.Blob()
+					comparison = bytes.Compare(v, limit)
+				default:
+					break outer
+				}
+
+				switch constraint.Op {
+				case sqlite.INDEX_CONSTRAINT_GT:
+					if order.Desc {
+						if comparison <= 0 {
+							c.current = nil
+							return nil
+						}
+					}
+				case sqlite.INDEX_CONSTRAINT_GE:
+					if order.Desc {
+						if comparison < 0 {
+							c.current = nil
+							return nil
+						}
+					}
+				case sqlite.INDEX_CONSTRAINT_LT:
+					if !order.Desc {
+						if comparison >= 0 {
+							c.current = nil
+							return nil
+						}
+					}
+				case sqlite.INDEX_CONSTRAINT_LE:
+					if !order.Desc {
+						if comparison > 0 {
+							c.current = nil
+							return nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (c *tableFuncCursor) Next() error {
 	defer func() { c.count++ }()
 	row, err := c.iterator.Next()
@@ -240,6 +374,16 @@ func (c *tableFuncCursor) Next() error {
 		return err
 	}
 	c.current = row
+
+	if c.tableFuncModule.options.earlyOrderByConstraintExit {
+		err := c.earlyOrderByConstraintExit()
+		if errors.Is(err, io.EOF) {
+			c.current = nil
+			return nil
+		}
+		return err
+	}
+
 	return nil
 }
 
