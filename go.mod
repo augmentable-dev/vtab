@@ -7,6 +7,6 @@ require (
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/stretchr/testify v1.7.0
-	go.riyazali.net/sqlite v0.0.0-20210707161919-414349b4032a
+	go.riyazali.net/sqlite v0.0.0-20220820100132-b0f5d97504db
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

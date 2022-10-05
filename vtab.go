@@ -387,7 +387,7 @@ func (c *tableFuncCursor) Next() error {
 	return nil
 }
 
-func (c *tableFuncCursor) Column(ctx *sqlite.Context, col int) error {
+func (c *tableFuncCursor) Column(ctx *sqlite.VirtualTableContext, col int) error {
 	return c.current.Column(ctx, col)
 }
 
